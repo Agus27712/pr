@@ -15,6 +15,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -50,6 +51,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import org.connectbot.terminal.SelectionController
 import org.connectbot.terminal.Terminal
+
+import androidx.compose.foundation.layout.imePadding
 
 class TerminalActivity : ComponentActivity() {
 
@@ -129,18 +132,30 @@ class TerminalActivity : ComponentActivity() {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF1a1a2e)) {
                     Box(modifier = Modifier.fillMaxSize()) {
-                        Terminal(
-                            terminalEmulator = current.emulator!!,
-                            modifier = Modifier.fillMaxSize().systemBarsPadding(),
-                            initialFontSize = 12.sp,
-                            backgroundColor = Color(0xFF1a1a2e),
-                            foregroundColor = Color.White,
-                            keyboardEnabled = true,
-                            showSoftKeyboard = true,
-                            // The library moves focus to its Compose node first; re-target the IME after it.
-                            onTerminalTap = { window.decorView.post { showKeyboard() } },
-                            onSelectionControllerAvailable = { selectionController = it },
-                        )
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .systemBarsPadding()
+                                .imePadding()
+                        ) {
+                            Terminal(
+                                terminalEmulator = current.emulator!!,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f),
+                                initialFontSize = 12.sp,
+                                backgroundColor = Color(0xFF1a1a2e),
+                                foregroundColor = Color.White,
+                                keyboardEnabled = true,
+                                showSoftKeyboard = true,
+                                onTerminalTap = { window.decorView.post { showKeyboard() } },
+                                onSelectionControllerAvailable = { selectionController = it },
+                            )
+                            TerminalExtraKeysBar(
+                                onSendBytes = { bytes -> current.write(bytes) },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                         exit?.let { ended ->
                             Text(
                                 text = "Session ended (exit ${ended.code ?: "unknown"})",
