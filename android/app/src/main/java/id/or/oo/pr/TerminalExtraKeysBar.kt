@@ -1,6 +1,5 @@
 package id.or.oo.pr
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -11,7 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -19,53 +17,79 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import org.connectbot.terminal.TerminalEmulator
+import org.connectbot.terminal.VTermKey
 
 @Composable
 fun TerminalExtraKeysBar(
     onSendBytes: (ByteArray) -> Unit,
     modifier: Modifier = Modifier,
+    terminalEmulator: TerminalEmulator? = null,
 ) {
     var ctrlActive by remember { mutableStateOf(false) }
     var altActive by remember { mutableStateOf(false) }
 
-    val handleKeyPayload = remember(onSendBytes) {
-        { payload: Any ->
-            var bytesToSend: ByteArray? = null
+    val dispatchAction = remember(terminalEmulator, onSendBytes) {
+        { vtermKey: Int?, char: Char?, rawPayload: String? ->
+            var modifiers = 0
+            if (altActive) modifiers = modifiers or 2
+            if (ctrlActive) modifiers = modifiers or 4
 
-            when (payload) {
-                is String -> {
-                    val rawBytes = payload.toByteArray(Charsets.UTF_8)
+            val em = terminalEmulator
+            if (em != null) {
+                if (vtermKey != null) {
+                    em.dispatchKey(modifiers, vtermKey)
+                } else if (char != null) {
+                    em.dispatchCharacter(modifiers, char.code)
+                } else if (rawPayload != null) {
+                    rawPayload.codePoints().forEach { codepoint ->
+                        em.dispatchCharacter(modifiers, codepoint)
+                    }
+                }
+            } else {
+                // Fallback direct byte writing if emulator reference is absent
+                var bytesToSend: ByteArray? = null
+                if (vtermKey != null) {
+                    val escCode = when (vtermKey) {
+                        VTermKey.UP -> "\u001b[A"
+                        VTermKey.DOWN -> "\u001b[B"
+                        VTermKey.RIGHT -> "\u001b[C"
+                        VTermKey.LEFT -> "\u001b[D"
+                        VTermKey.HOME -> "\u001b[H"
+                        VTermKey.END -> "\u001b[F"
+                        VTermKey.PAGEUP -> "\u001b[5~"
+                        VTermKey.PAGEDOWN -> "\u001b[6~"
+                        VTermKey.ESCAPE -> "\u001b"
+                        VTermKey.TAB -> "\t"
+                        else -> null
+                    }
+                    if (escCode != null) {
+                        val rawBytes = escCode.toByteArray(Charsets.UTF_8)
+                        bytesToSend = if (altActive) byteArrayOf(0x1B.toByte()) + rawBytes else rawBytes
+                    }
+                } else if (char != null || rawPayload != null) {
+                    val str = char?.toString() ?: rawPayload ?: ""
+                    val rawBytes = str.toByteArray(Charsets.UTF_8)
                     if (ctrlActive && rawBytes.size == 1) {
                         val firstChar = rawBytes[0].toInt().toChar()
-                        val ctrlChar = (firstChar.code and 0x1F).toByte()
-                        bytesToSend = byteArrayOf(ctrlChar)
+                        bytesToSend = byteArrayOf((firstChar.code and 0x1F).toByte())
                     } else if (altActive) {
                         bytesToSend = byteArrayOf(0x1B.toByte()) + rawBytes
                     } else {
                         bytesToSend = rawBytes
                     }
-                    ctrlActive = false
-                    altActive = false
                 }
-                is ByteArray -> {
-                    if (altActive) {
-                        bytesToSend = byteArrayOf(0x1B.toByte()) + payload
-                    } else {
-                        bytesToSend = payload
-                    }
-                    ctrlActive = false
-                    altActive = false
-                }
+                bytesToSend?.let { onSendBytes(it) }
             }
 
-            bytesToSend?.let { onSendBytes(it) }
+            ctrlActive = false
+            altActive = false
         }
     }
 
@@ -88,12 +112,12 @@ fun TerminalExtraKeysBar(
                 KeyButton(
                     label = "ESC",
                     modifier = Modifier.weight(1f).testTag("key_esc"),
-                    onClick = { handleKeyPayload("\u001b") },
+                    onClick = { dispatchAction(VTermKey.ESCAPE, null, null) },
                 )
                 KeyButton(
                     label = "TAB",
                     modifier = Modifier.weight(1f).testTag("key_tab"),
-                    onClick = { handleKeyPayload("\t") },
+                    onClick = { dispatchAction(VTermKey.TAB, null, null) },
                 )
                 KeyButton(
                     label = "CTRL",
@@ -110,22 +134,22 @@ fun TerminalExtraKeysBar(
                 KeyButton(
                     label = "▲",
                     modifier = Modifier.weight(1f).testTag("key_up"),
-                    onClick = { handleKeyPayload("\u001b[A") },
+                    onClick = { dispatchAction(VTermKey.UP, null, null) },
                 )
                 KeyButton(
                     label = "|",
                     modifier = Modifier.weight(1f).testTag("key_pipe"),
-                    onClick = { handleKeyPayload("|") },
+                    onClick = { dispatchAction(null, '|', null) },
                 )
                 KeyButton(
                     label = "/",
                     modifier = Modifier.weight(1f).testTag("key_slash"),
-                    onClick = { handleKeyPayload("/") },
+                    onClick = { dispatchAction(null, '/', null) },
                 )
                 KeyButton(
                     label = "-",
                     modifier = Modifier.weight(1f).testTag("key_minus"),
-                    onClick = { handleKeyPayload("-") },
+                    onClick = { dispatchAction(null, '-', null) },
                 )
             }
 
@@ -137,42 +161,42 @@ fun TerminalExtraKeysBar(
                 KeyButton(
                     label = "HOME",
                     modifier = Modifier.weight(1f).testTag("key_home"),
-                    onClick = { handleKeyPayload("\u001b[H") },
+                    onClick = { dispatchAction(VTermKey.HOME, null, null) },
                 )
                 KeyButton(
                     label = "END",
                     modifier = Modifier.weight(1f).testTag("key_end"),
-                    onClick = { handleKeyPayload("\u001b[F") },
+                    onClick = { dispatchAction(VTermKey.END, null, null) },
                 )
                 KeyButton(
                     label = "PGUP",
                     modifier = Modifier.weight(1f).testTag("key_pgup"),
-                    onClick = { handleKeyPayload("\u001b[5~") },
+                    onClick = { dispatchAction(VTermKey.PAGEUP, null, null) },
                 )
                 KeyButton(
                     label = "PGDN",
                     modifier = Modifier.weight(1f).testTag("key_pgdn"),
-                    onClick = { handleKeyPayload("\u001b[6~") },
+                    onClick = { dispatchAction(VTermKey.PAGEDOWN, null, null) },
                 )
                 KeyButton(
-                    label = "◄",
+                    label = "◀",
                     modifier = Modifier.weight(1f).testTag("key_left"),
-                    onClick = { handleKeyPayload("\u001b[D") },
+                    onClick = { dispatchAction(VTermKey.LEFT, null, null) },
                 )
                 KeyButton(
                     label = "▼",
                     modifier = Modifier.weight(1f).testTag("key_down"),
-                    onClick = { handleKeyPayload("\u001b[B") },
+                    onClick = { dispatchAction(VTermKey.DOWN, null, null) },
                 )
                 KeyButton(
-                    label = "►",
+                    label = "▶",
                     modifier = Modifier.weight(1f).testTag("key_right"),
-                    onClick = { handleKeyPayload("\u001b[C") },
+                    onClick = { dispatchAction(VTermKey.RIGHT, null, null) },
                 )
                 KeyButton(
                     label = "~",
                     modifier = Modifier.weight(1f).testTag("key_tilde"),
-                    onClick = { handleKeyPayload("~") },
+                    onClick = { dispatchAction(null, '~', null) },
                 )
             }
         }
