@@ -153,6 +153,7 @@ class TerminalActivity : ComponentActivity() {
                             )
                             TerminalExtraKeysBar(
                                 onSendBytes = { bytes -> current.write(bytes) },
+                                terminalEmulator = current.emulator,
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
